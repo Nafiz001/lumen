@@ -1,6 +1,7 @@
 package search
 
 import (
+	"html"
 	"strings"
 
 	"github.com/nafizahmed/lumen/internal/analysis"
@@ -196,6 +197,19 @@ func truncate(text string, maxLength int) string {
 func RenderSnippet(snippet, open, close string) string {
 	snippet = strings.ReplaceAll(snippet, highlightOpen, open)
 	return strings.ReplaceAll(snippet, highlightClose, close)
+}
+
+// RenderSnippetHTML escapes the snippet for HTML, then turns the markers into
+// <mark> tags.
+//
+// The order matters and is the whole point of using control characters as
+// markers. Escaping happens first, so any markup in the indexed document is
+// neutralised; the tags are introduced afterwards, from characters the escape
+// pass left alone and that no real document can contain. A document whose body
+// literally reads "<mark>" therefore renders as text, and cannot extend a
+// highlight over the rest of the page.
+func RenderSnippetHTML(snippet string) string {
+	return RenderSnippet(html.EscapeString(snippet), "<mark>", "</mark>")
 }
 
 // StripHighlights removes the markers entirely.
