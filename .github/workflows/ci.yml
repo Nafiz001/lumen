@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # The file crawler builds paths and the index writes files, so the
+        # platform differences are worth catching: path separators in URIs, and
+        # Windows refusing operations on an open file.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ['1.22', '1.23']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go build ./...
+      - run: go test ./...
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go vet ./...
+      - name: gofmt
+        run: |
+          if [ -n "$(gofmt -l cmd internal)" ]; then
+            echo "these files need gofmt:"
+            gofmt -l cmd internal
+            exit 1
+          fi
