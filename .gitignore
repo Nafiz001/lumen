@@ -1,11 +1,12 @@
+# Build output
+/lumen
+/lumen.exe
 /bin/
-*.exe
+
+# Indexes are data, not source: they are large, binary, and rebuilt in seconds.
+lumen-index/
+*.lum
+
+# Go tooling
 *.test
 *.out
-coverage.html
-
-# Index data produced at runtime
-/data/
-*.idx
-*.seg
-*.lum

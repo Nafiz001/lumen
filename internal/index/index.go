@@ -232,6 +232,43 @@ func (idx *Index) Terms() []string {
 	return out
 }
 
+// TermCount pairs a term with the number of documents containing it.
+type TermCount struct {
+	Term         string `json:"term"`
+	DocFrequency int    `json:"doc_frequency"`
+}
+
+// TopTerms returns the n terms appearing in the most documents.
+//
+// This is a diagnostic rather than a search feature, and it is a revealing one:
+// if the top of the list is full of markup fragments or minified identifiers,
+// the analysis pipeline is indexing something it should be discarding, and
+// every document's length -- and so every BM25 score -- is skewed by it.
+func (idx *Index) TopTerms(n int) []TermCount {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	counts := make([]TermCount, 0, len(idx.terms))
+	for term, list := range idx.terms {
+		if strings.Contains(term, ":") {
+			continue // field-scoped copies would appear twice
+		}
+		counts = append(counts, TermCount{Term: term, DocFrequency: len(list.Postings)})
+	}
+	// Ties break on the term so the output is stable between runs; map order
+	// alone would shuffle equally common terms on every call.
+	sort.Slice(counts, func(i, j int) bool {
+		if counts[i].DocFrequency != counts[j].DocFrequency {
+			return counts[i].DocFrequency > counts[j].DocFrequency
+		}
+		return counts[i].Term < counts[j].Term
+	})
+	if n > 0 && len(counts) > n {
+		counts = counts[:n]
+	}
+	return counts
+}
+
 // Stats describes the index, for the CLI and the status endpoint.
 type Stats struct {
 	Documents     int     `json:"documents"`
