@@ -1,0 +1,11 @@
+/bin/
+*.exe
+*.test
+*.out
+coverage.html
+
+# Index data produced at runtime
+/data/
+*.idx
+*.seg
+*.lum
