@@ -644,3 +644,85 @@ func TestConcurrentWritesAndReads(t *testing.T) {
 	<-done
 	<-done
 }
+
+// --- a term appearing in more than one field ---
+
+func TestTermInTitleAndBodyGetsOnePosting(t *testing.T) {
+	// The title and the body are indexed by separate calls. If each appends
+	// its own posting, a word in both fields is recorded as two documents.
+	// Nothing errors: document frequency quietly inflates, IDF drops for that
+	// term across the whole corpus, and the sorted-unique order that Intersect
+	// walks no longer holds.
+	idx := New(analysis.New())
+	if _, err := idx.AddDocument("a.md", "Ownership in Rust", "Rust manages memory."); err != nil {
+		t.Fatal(err)
+	}
+
+	postings := idx.Postings("rust")
+	if postings == nil {
+		t.Fatal("no postings for a term in both the title and the body")
+	}
+	if len(postings.Postings) != 1 {
+		t.Fatalf("one document produced %d postings for %q", len(postings.Postings), "rust")
+	}
+	if got := postings.Postings[0].Frequency; got != 2 {
+		t.Errorf("frequency = %d, want 2 (once in the title, once in the body)", got)
+	}
+	if got := len(postings.Postings[0].Positions); got != 2 {
+		t.Errorf("recorded %d positions, want 2", got)
+	}
+}
+
+func TestPostingDocIDsAreUnique(t *testing.T) {
+	// The invariant Intersect and the delta encoding both depend on.
+	idx := New(analysis.New())
+	docs := []struct{ uri, title, body string }{
+		{"a", "search engine", "a search engine indexes documents"},
+		{"b", "index", "the index maps terms to documents"},
+		{"c", "documents", "documents are indexed by an engine"},
+	}
+	for _, d := range docs {
+		if _, err := idx.AddDocument(d.uri, d.title, d.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, term := range idx.Terms() {
+		postings := idx.Postings(term).Postings
+		for i := 1; i < len(postings); i++ {
+			if postings[i].DocID <= postings[i-1].DocID {
+				t.Errorf("term %q has out-of-order or duplicate document ids: %v",
+					term, postings)
+				break
+			}
+		}
+	}
+}
+
+func TestPositionsAreAscendingAcrossFields(t *testing.T) {
+	// The delta encoding stores gaps, so a position that goes backwards
+	// underflows rather than erroring.
+	idx := New(analysis.New())
+	if _, err := idx.AddDocument("a", "rust", "rust rust"); err != nil {
+		t.Fatal(err)
+	}
+
+	positions := idx.Postings("rust").Postings[0].Positions
+	for i := 1; i < len(positions); i++ {
+		if positions[i] <= positions[i-1] {
+			t.Errorf("positions are not ascending: %v", positions)
+			break
+		}
+	}
+}
+
+func TestDocFrequencyNeverExceedsDocumentCount(t *testing.T) {
+	idx := newTestIndex(t)
+
+	for _, tc := range idx.TopTerms(0) {
+		if tc.DocFrequency > idx.DocCount() {
+			t.Errorf("term %q is in %d documents but only %d exist",
+				tc.Term, tc.DocFrequency, idx.DocCount())
+		}
+	}
+}

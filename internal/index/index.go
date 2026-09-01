@@ -166,8 +166,26 @@ func (idx *Index) indexField(id DocID, field, text string, startPosition int) in
 			list = &PostingsList{Term: term}
 			idx.terms[term] = list
 		}
-		// Documents arrive in increasing id order, so appending keeps the list
-		// sorted without a sort -- which is what the intersection depends on.
+		// A document is indexed field by field, so this can be the second call
+		// for the same document -- a word in both the title and the body
+		// arrives twice. Merging rather than appending is what keeps one
+		// posting per document. Appending instead fails silently: the document
+		// frequency inflates, which lowers that term's IDF for the whole
+		// corpus, and the sorted-unique order that Intersect walks no longer
+		// holds.
+		//
+		// Documents arrive in increasing id order and fields are indexed in
+		// position order, so the duplicate can only ever be the last posting,
+		// and its positions are already lower than the ones being merged in.
+		// That keeps both the list and the positions sorted without sorting --
+		// which the delta encoding requires, since it stores gaps and a
+		// backwards step would underflow.
+		if n := len(list.Postings); n > 0 && list.Postings[n-1].DocID == id {
+			last := &list.Postings[n-1]
+			last.Positions = append(last.Positions, positions...)
+			last.Frequency = uint32(len(last.Positions))
+			continue
+		}
 		list.Postings = append(list.Postings, Posting{
 			DocID:     id,
 			Frequency: uint32(len(positions)),
