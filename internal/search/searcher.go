@@ -92,26 +92,22 @@ func (s *Searcher) Search(raw string, opts Options) (*Results, error) {
 	scored := s.score(query, opts.Explain)
 	results.Total = len(scored)
 
-	// Ranked by score, with the document id breaking ties so that equal-scoring
-	// results come back in a stable order rather than whatever the map
-	// iteration produced.
-	sort.Slice(scored, func(i, j int) bool {
-		if scored[i].Score != scored[j].Score {
-			return scored[i].Score > scored[j].Score
-		}
-		return scored[i].DocID < scored[j].DocID
-	})
+	// Only the requested page is ranked. Fully sorting every candidate to show
+	// ten of them is the sort dominating the query on a large corpus; topK
+	// selects with a bounded heap instead and falls back to a full sort when
+	// the page is most of what matched.
+	ranked := topK(scored, opts.Offset+opts.Limit)
 
 	start := opts.Offset
-	if start > len(scored) {
-		start = len(scored)
+	if start > len(ranked) {
+		start = len(ranked)
 	}
 	end := start + opts.Limit
-	if end > len(scored) {
-		end = len(scored)
+	if end > len(ranked) {
+		end = len(ranked)
 	}
 
-	page := scored[start:end]
+	page := ranked[start:end]
 	terms := query.TermsFor()
 	for i := range page {
 		doc, ok := s.idx.Document(page[i].DocID)
