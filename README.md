@@ -39,7 +39,7 @@ web crawler, and the snippet generation that makes a result list readable.
 Go 1.22 or newer. No dependencies to fetch.
 
 ```sh
-git clone https://github.com/nafizahmed/lumen
+git clone https://github.com/Nafiz001/lumen
 cd lumen
 make build      # or: go build -o lumen ./cmd/lumen
 ```

@@ -4,8 +4,8 @@ import (
 	"html"
 	"strings"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 // Snippets: the short excerpt shown under each result.

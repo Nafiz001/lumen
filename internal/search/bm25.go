@@ -9,7 +9,7 @@ package search
 import (
 	"math"
 
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 // BM25 parameters.

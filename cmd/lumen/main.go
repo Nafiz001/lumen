@@ -25,11 +25,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
-	"github.com/nafizahmed/lumen/internal/crawl"
-	"github.com/nafizahmed/lumen/internal/index"
-	"github.com/nafizahmed/lumen/internal/search"
-	"github.com/nafizahmed/lumen/internal/server"
+	"github.com/Nafiz001/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/crawl"
+	"github.com/Nafiz001/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/search"
+	"github.com/Nafiz001/lumen/internal/server"
 )
 
 const version = "0.1.0"

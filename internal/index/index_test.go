@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/analysis"
 )
 
 // --- postings encoding ---

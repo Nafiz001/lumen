@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 // fullSort is the obvious implementation topK replaces; it is the oracle the

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 func testServer(t *testing.T) *Server {

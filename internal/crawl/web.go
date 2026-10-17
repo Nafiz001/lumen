@@ -60,7 +60,7 @@ func DefaultWebOptions() WebOptions {
 		// and the cost of being too fast is someone else's server.
 		Delay:        1 * time.Second,
 		Timeout:      15 * time.Second,
-		UserAgent:    "lumen/0.1 (private search engine; +https://github.com/nafizahmed/lumen)",
+		UserAgent:    "lumen/0.1 (private search engine; +https://github.com/Nafiz001/lumen)",
 		SameHostOnly: true,
 		MaxBodySize:  5 << 20,
 	}

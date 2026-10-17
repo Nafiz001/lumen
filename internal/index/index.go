@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/analysis"
 )
 
 // Document is one indexed item and the metadata a result page needs.

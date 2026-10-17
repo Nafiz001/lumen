@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nafizahmed/lumen/internal/index"
-	"github.com/nafizahmed/lumen/internal/search"
+	"github.com/Nafiz001/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/search"
 )
 
 // Server serves search over HTTP.

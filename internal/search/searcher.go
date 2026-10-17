@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 // Result is one ranked hit.

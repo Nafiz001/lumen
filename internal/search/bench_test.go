@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/nafizahmed/lumen/internal/analysis"
-	"github.com/nafizahmed/lumen/internal/index"
+	"github.com/Nafiz001/lumen/internal/analysis"
+	"github.com/Nafiz001/lumen/internal/index"
 )
 
 // The benchmarks build a synthetic corpus with a Zipf-like term distribution,
