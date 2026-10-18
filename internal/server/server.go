@@ -10,10 +10,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"log/slog"
 	"net"
 	"net/http"
@@ -240,13 +240,13 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	const perPage = 10
 	var results *search.Results
 	var elapsed time.Duration
 	var searchErr error
 
 	if query != "" {
-		opts := search.Options{Limit: perPage, Offset: page * perPage, SnippetLength: 240}
+		// Explain is on so each result can show where its score came from.
+		opts := search.Options{Limit: perPage, Offset: page * perPage, SnippetLength: 240, Explain: true}
 		start := time.Now()
 		results, searchErr = s.searcher.Search(query, opts)
 		elapsed = time.Since(start)
@@ -256,101 +256,14 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 
+	var out bytes.Buffer
+	if err := pageTemplate.Execute(&out, s.buildPage(query, page, results, elapsed, searchErr)); err != nil {
+		s.log.Error("render page", "err", err)
+		http.Error(w, "could not render the page", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	s.renderPage(w, query, page, perPage, results, elapsed, searchErr)
-}
-
-func (s *Server) renderPage(
-	w http.ResponseWriter,
-	query string,
-	page, perPage int,
-	results *search.Results,
-	elapsed time.Duration,
-	searchErr error,
-) {
-	stats := s.idx.Stats()
-	var b strings.Builder
-
-	b.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8">`)
-	b.WriteString(`<meta name="viewport" content="width=device-width,initial-scale=1">`)
-	b.WriteString(`<title>`)
-	if query != "" {
-		b.WriteString(html.EscapeString(query) + " - ")
-	}
-	b.WriteString(`lumen</title>`)
-	b.WriteString(pageStyle)
-	b.WriteString(`</head><body>`)
-
-	b.WriteString(`<header><a class="brand" href="/">lumen</a>`)
-	b.WriteString(`<form action="/" method="get" role="search">`)
-	b.WriteString(fmt.Sprintf(
-		`<input type="search" name="q" value="%s" placeholder="Search %d documents..." autofocus autocomplete="off">`,
-		html.EscapeString(query), stats.Documents))
-	b.WriteString(`<button type="submit">Search</button></form></header><main>`)
-
-	switch {
-	case searchErr != nil:
-		b.WriteString(`<p class="error">` + html.EscapeString(searchErr.Error()) + `</p>`)
-
-	case query == "":
-		b.WriteString(`<div class="intro">`)
-		b.WriteString(fmt.Sprintf(
-			`<p><strong>%d documents</strong>, <strong>%d terms</strong>, <strong>%d postings</strong>. `+
-				`Everything is indexed locally; no query leaves this machine.</p>`,
-			stats.Documents, stats.Terms, stats.Postings))
-		b.WriteString(`<h2>Query syntax</h2><table class="syntax">`)
-		for _, row := range [][2]string{
-			{"go concurrency", "both words, ranked by relevance"},
-			{`"exact phrase"`, "the words adjacent and in order"},
-			{"+required", "the document must contain this"},
-			{"-excluded", "the document must not contain this"},
-			{"title:golang", "scoped to the title field"},
-		} {
-			b.WriteString(`<tr><td><code>` + html.EscapeString(row[0]) + `</code></td><td>` + row[1] + `</td></tr>`)
-		}
-		b.WriteString(`</table></div>`)
-
-	case results == nil || len(results.Hits) == 0:
-		b.WriteString(`<p class="empty">No results for <strong>` +
-			html.EscapeString(query) + `</strong>.</p>`)
-		b.WriteString(`<p class="hint">Try fewer words, or check the spelling. ` +
-			`Terms are stemmed, so "running" and "runs" already match each other.</p>`)
-
-	default:
-		b.WriteString(fmt.Sprintf(
-			`<p class="meta">%d result%s in %.2f ms`,
-			results.Total, plural(results.Total), float64(elapsed.Microseconds())/1000))
-		if results.Parsed != query {
-			b.WriteString(` &middot; read as <code>` + html.EscapeString(results.Parsed) + `</code>`)
-		}
-		b.WriteString(`</p><ol class="results" start="` + strconv.Itoa(page*perPage+1) + `">`)
-
-		for _, hit := range results.Hits {
-			b.WriteString(`<li><h3>` + html.EscapeString(displayTitle(hit)) + `</h3>`)
-			b.WriteString(`<div class="uri">` + html.EscapeString(hit.URI) + `</div>`)
-			// The snippet is escaped before the highlight markers become tags,
-			// so a document containing "<script>" cannot inject one.
-			b.WriteString(`<p class="snippet">` + search.RenderSnippetHTML(hit.Snippet) + `</p>`)
-			b.WriteString(fmt.Sprintf(`<div class="score">score %.4f</div></li>`, hit.Score))
-		}
-		b.WriteString(`</ol>`)
-
-		b.WriteString(`<nav class="pages">`)
-		if page > 0 {
-			b.WriteString(fmt.Sprintf(`<a href="/?q=%s&p=%d">&larr; previous</a>`,
-				urlEscape(query), page-1))
-		}
-		if (page+1)*perPage < results.Total {
-			b.WriteString(fmt.Sprintf(`<a href="/?q=%s&p=%d">next &rarr;</a>`,
-				urlEscape(query), page+1))
-		}
-		b.WriteString(`</nav>`)
-	}
-
-	b.WriteString(`</main><footer>lumen &middot; a private search engine &middot; ` +
-		`<a href="/api/stats">API</a></footer></body></html>`)
-
-	_, _ = w.Write([]byte(b.String()))
+	_, _ = w.Write(out.Bytes())
 }
 
 func displayTitle(hit search.Result) string {
@@ -358,15 +271,4 @@ func displayTitle(hit search.Result) string {
 		return hit.Title
 	}
 	return hit.URI
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-func urlEscape(s string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(s, "&", "%26"), " ", "+")
 }

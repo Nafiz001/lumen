@@ -307,7 +307,7 @@ func TestSearchPageNoResults(t *testing.T) {
 	srv := testServer(t)
 
 	page := get(t, srv, "/?q=xyzzyplughnothing").Body.String()
-	if !strings.Contains(page, "No results") {
+	if !strings.Contains(page, "Nothing matched") {
 		t.Errorf("no 'no results' message: %s", page)
 	}
 }
