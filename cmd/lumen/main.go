@@ -313,8 +313,22 @@ func cmdServe(args []string) error {
 	indexDir := fs.String("index", "lumen-index", "which index to serve")
 	addr := fs.String("addr", "127.0.0.1:8080", "address to listen on")
 	verbose := fs.Bool("v", false, "log every request")
+	refresh := fs.Duration("refresh", 0, "crawl -seed again this often and swap the new index in, e.g. 168h (default: never)")
+	seed := fs.String("seed", "", "the site to crawl again when -refresh is set")
+	maxPages := fs.Int("max-pages", 200, "pages to crawl on a refresh")
+	maxDepth := fs.Int("max-depth", 3, "how many links deep to follow on a refresh")
+	delay := fs.Duration("delay", time.Second, "wait between requests to the same host on a refresh")
 	parseFlags(fs, args)
 
+	if *refresh > 0 && *seed == "" {
+		return fmt.Errorf("-refresh needs -seed, the site to crawl again")
+	}
+	if *refresh > 0 && *refresh < time.Minute {
+		return fmt.Errorf("-refresh %s is too short; a crawl takes longer than that", *refresh)
+	}
+
+	// A refresh that was interrupted mid-swap is finished or undone first.
+	recoverIndexDir(*indexDir)
 	idx, err := index.Load(*indexDir, analysis.New())
 	if err != nil {
 		return fmt.Errorf("%w (build one first with: lumen index <dir>)", err)
@@ -338,10 +352,20 @@ func cmdServe(args []string) error {
 	defer stop()
 
 	srv := server.New(idx, *addr, logger)
+	srv.SetBuiltAt(indexBuiltAt(*indexDir))
 	if err := srv.Listen(); err != nil {
 		return err
 	}
 	fmt.Printf("lumen serving %s at http://%s\n", *indexDir, srv.Addr())
+
+	if *refresh > 0 {
+		opts := crawl.DefaultWebOptions()
+		opts.MaxPages = *maxPages
+		opts.MaxDepth = *maxDepth
+		opts.Delay = *delay
+		srv.SetRefresh(*refresh, *seed)
+		go newRefresher(*indexDir, *seed, opts, *refresh, srv, logger).run(ctx)
+	}
 	return srv.Serve(ctx)
 }
 

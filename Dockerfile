@@ -25,11 +25,18 @@ if [ ! -d /data/index ]; then
   echo "lumen: no index yet, crawling $LUMEN_SEED (up to $LUMEN_MAX_PAGES pages)"
   lumen crawl "$LUMEN_SEED" -index /data/index -max-pages "$LUMEN_MAX_PAGES"
 fi
-exec lumen serve -index /data/index -addr 0.0.0.0:8080
+set -- serve -index /data/index -addr 0.0.0.0:8080
+# Crawl the seed again every LUMEN_REFRESH (0 turns it off) and swap the new
+# index in without a restart; a failed or suspiciously small crawl is ignored.
+if [ -n "$LUMEN_REFRESH" ] && [ "$LUMEN_REFRESH" != "0" ]; then
+  set -- "$@" -refresh "$LUMEN_REFRESH" -seed "$LUMEN_SEED" -max-pages "$LUMEN_MAX_PAGES"
+fi
+exec lumen "$@"
 EOF
 RUN chmod 755 /usr/local/bin/lumen-start
 ENV LUMEN_SEED=https://go.dev/blog/ \
-    LUMEN_MAX_PAGES=400
+    LUMEN_MAX_PAGES=400 \
+    LUMEN_REFRESH=168h
 USER lumen
 VOLUME /data
 EXPOSE 8080

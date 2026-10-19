@@ -48,6 +48,9 @@ type pageData struct {
 	Examples []example
 	Syntax   []example
 	Steps    []step
+
+	// Freshness says when the index was crawled and how often it is redone.
+	Freshness string
 }
 
 type legendTerm struct {
@@ -122,17 +125,19 @@ var homeSteps = []step{
 }
 
 func (s *Server) buildPage(query string, page int, results *search.Results, elapsed time.Duration, searchErr error) pageData {
-	stats := s.idx.Stats()
+	st := s.state()
+	stats := st.idx.Stats()
 	d := pageData{
-		Style:    template.CSS(pageStyle),
-		Query:    query,
-		Title:    "lumen, a search engine written from scratch",
-		Docs:     stats.Documents,
-		Terms:    stats.Terms,
-		Postings: stats.Postings,
-		Examples: homeExamples,
-		Syntax:   homeExamples,
-		Steps:    homeSteps,
+		Style:     template.CSS(pageStyle),
+		Query:     query,
+		Title:     "lumen, a search engine written from scratch",
+		Docs:      stats.Documents,
+		Terms:     stats.Terms,
+		Postings:  stats.Postings,
+		Examples:  homeExamples,
+		Syntax:    homeExamples,
+		Steps:     homeSteps,
+		Freshness: s.freshness(st.builtAt),
 	}
 	if query != "" {
 		d.Title = query + " - lumen"
@@ -334,3 +339,33 @@ var pageTemplate = template.Must(template.New("page").Funcs(template.FuncMap{
 		return s
 	},
 }).Parse(pageHTML))
+
+// freshness is the sentence under the index numbers: when the pages were
+// crawled and, if the server refreshes itself, how often.
+func (s *Server) freshness(builtAt time.Time) string {
+	if builtAt.IsZero() {
+		return ""
+	}
+	out := "Last crawled " + builtAt.UTC().Format("2 Jan 2006")
+	if s.source != "" {
+		out += " from " + strings.TrimPrefix(strings.TrimPrefix(s.source, "https://"), "http://")
+	}
+	if s.refreshEvery > 0 {
+		out += ", and crawled again " + every(s.refreshEvery)
+	}
+	return out + "."
+}
+
+// every turns a duration into the phrase a visitor would use for it.
+func every(d time.Duration) string {
+	switch {
+	case d%(24*time.Hour) == 0 && d == 24*time.Hour:
+		return "every day"
+	case d%(7*24*time.Hour) == 0 && d == 7*24*time.Hour:
+		return "every week"
+	case d%(24*time.Hour) == 0:
+		return fmt.Sprintf("every %d days", int(d/(24*time.Hour)))
+	default:
+		return "every " + d.String()
+	}
+}

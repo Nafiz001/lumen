@@ -119,6 +119,25 @@ GET /api/stats
 GET /api/document/<id>
 ```
 
+### Keeping a served index fresh
+
+An index is a snapshot of the pages as they were crawled. To keep a long-running
+server current, give it the site to crawl again and how often:
+
+```sh
+lumen serve -index ./idx -refresh 168h -seed https://go.dev/blog/ -max-pages 400
+```
+
+Every interval it crawls the seed into `./idx.next`, checks the result, loads it
+back from disk, and only then replaces what is served. The switch is a single
+pointer store, so a search that is already running finishes on the index it
+started on and no search ever sees a half-built one. A crawl that fails, or that
+comes back with less than half the pages already served (the site is down, or
+rate-limiting the crawler), is thrown away and the old index keeps serving; it
+tries again in an hour. Two directory renames put the new index on disk, and
+`serve` finishes or undoes an interrupted pair of them on start-up. The page and
+`/api/stats` say when the index was built and how often it is redone.
+
 The server binds to localhost and has no authentication. That pairing is
 deliberate rather than an omission: the index is of your own files on your own
 machine, and a login on a service nothing else can reach is theatre. Binding to
@@ -270,8 +289,10 @@ version begins.
   document's possible score before computing it and skips those that cannot
   reach the current top-k threshold.
 - **No incremental update or deletion.** Adding to an index means `-append`;
-  changing a document means rebuilding. Real engines keep a deletion bitmap and
-  merge segments.
+  changing a document means rebuilding. `-refresh` automates the rebuild (a full
+  re-crawl, then a swap), so a changed page is picked up on the next cycle, but
+  nothing is updated in place. Real engines keep a deletion bitmap and merge
+  segments.
 - **The HTML extractor is a hand-written scanner, not a parser.** It handles
   ordinary markup and will mishandle pathological input, which for an index
   means a slightly worse snippet rather than a wrong answer. `x/net/html` would

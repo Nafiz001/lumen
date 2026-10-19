@@ -21,18 +21,32 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Nafiz001/lumen/internal/index"
 	"github.com/Nafiz001/lumen/internal/search"
 )
 
-// Server serves search over HTTP.
-type Server struct {
+// state is one built index and the searcher over it. It is never changed
+// after it is published: a refresh builds a new one and swaps the pointer, so
+// a search that is already running finishes against the index it started on.
+type state struct {
 	idx      *index.Index
 	searcher *search.Searcher
-	log      *slog.Logger
-	addr     string
+	builtAt  time.Time
+}
+
+// Server serves search over HTTP.
+type Server struct {
+	cur  atomic.Pointer[state]
+	log  *slog.Logger
+	addr string
+
+	// Set before Serve, read afterwards: how often the index is rebuilt, and
+	// from where, for the page to say so.
+	refreshEvery time.Duration
+	source       string
 
 	mu sync.Mutex
 	ln net.Listener
@@ -45,12 +59,35 @@ func New(idx *index.Index, addr string, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
-	return &Server{
-		idx:      idx,
-		searcher: search.New(idx),
-		log:      logger,
-		addr:     addr,
-	}
+	s := &Server{log: logger, addr: addr}
+	s.cur.Store(&state{idx: idx, searcher: search.New(idx)})
+	return s
+}
+
+func (s *Server) state() *state { return s.cur.Load() }
+
+// Swap starts serving a new index. Searches already in flight finish on the
+// old one; every search after the swap sees the new one.
+func (s *Server) Swap(idx *index.Index, builtAt time.Time) {
+	s.cur.Store(&state{idx: idx, searcher: search.New(idx), builtAt: builtAt})
+}
+
+// SetBuiltAt records when the index being served was built, for the page.
+func (s *Server) SetBuiltAt(t time.Time) {
+	old := s.state()
+	s.cur.Store(&state{idx: old.idx, searcher: old.searcher, builtAt: t})
+}
+
+// BuiltAt is when the index being served was built; zero if unknown.
+func (s *Server) BuiltAt() time.Time { return s.state().builtAt }
+
+// Documents is how many documents the index being served holds.
+func (s *Server) Documents() int { return s.state().idx.Stats().Documents }
+
+// SetRefresh says how often the index is rebuilt and from what, so the page
+// can tell visitors. Call it before Serve.
+func (s *Server) SetRefresh(every time.Duration, source string) {
+	s.refreshEvery, s.source = every, source
 }
 
 // Listen binds without serving, so a test can learn the port.
@@ -113,7 +150,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	stats := s.idx.Stats()
+	stats := s.state().idx.Stats()
 	s.log.Info("lumen ready",
 		"addr", s.Addr().String(),
 		"documents", stats.Documents,
@@ -163,7 +200,7 @@ func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	opts.Explain = r.URL.Query().Get("explain") == "true"
 
 	start := time.Now()
-	results, err := s.searcher.Search(query, opts)
+	results, err := s.state().searcher.Search(query, opts)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -189,18 +226,27 @@ func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
-	stats := s.idx.Stats()
+	st := s.state()
+	stats := st.idx.Stats()
 	s.mu.Lock()
 	queries := s.queries
 	s.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"documents":      stats.Documents,
 		"terms":          stats.Terms,
 		"postings":       stats.Postings,
 		"average_length": stats.AverageLength,
 		"queries_served": queries,
-	})
+	}
+	if !st.builtAt.IsZero() {
+		out["built_at"] = st.builtAt.UTC().Format(time.RFC3339)
+	}
+	if s.refreshEvery > 0 {
+		out["refresh_every"] = s.refreshEvery.String()
+		out["source"] = s.source
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleAPIDocument(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +256,7 @@ func (s *Server) handleAPIDocument(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid document id"})
 		return
 	}
-	doc, ok := s.idx.Document(index.DocID(id))
+	doc, ok := s.state().idx.Document(index.DocID(id))
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such document"})
 		return
@@ -248,7 +294,7 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 		// Explain is on so each result can show where its score came from.
 		opts := search.Options{Limit: perPage, Offset: page * perPage, SnippetLength: 240, Explain: true}
 		start := time.Now()
-		results, searchErr = s.searcher.Search(query, opts)
+		results, searchErr = s.state().searcher.Search(query, opts)
 		elapsed = time.Since(start)
 
 		s.mu.Lock()

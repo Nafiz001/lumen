@@ -29,7 +29,7 @@ const pageHTML = `{{define "search"}}<form class="search" action="/" method="get
     <div><b>{{num .Docs}}</b><span>documents</span></div>
     <div><b>{{num .Terms}}</b><span>distinct terms</span></div>
     <div><b>{{num .Postings}}</b><span>postings</span></div>
-    <p>Built in memory by this server from pages it crawled itself. No query leaves it.</p>
+    <p>Built in memory by this server from pages it crawled itself. No query leaves it.{{if .Freshness}} {{.Freshness}}{{end}}</p>
   </section>
 
   <section class="how" aria-labelledby="how-h">
